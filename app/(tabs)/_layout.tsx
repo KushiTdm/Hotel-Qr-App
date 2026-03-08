@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Hop as Home, Settings } from 'lucide-react-native';
+import { Home, UtensilsCrossed, Settings } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -9,15 +9,26 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#0f172a',
           borderTopColor: '#1e293b',
+          paddingBottom: 8,
+          paddingTop: 8,
+          height: 64,
         },
         tabBarActiveTintColor: '#3b82f6',
-        tabBarInactiveTintColor: '#64748b',
+        tabBarInactiveTintColor: '#475569',
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Accueil',
           tabBarIcon: ({ size, color }) => <Home size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="menu"
+        options={{
+          title: 'Menu',
+          tabBarIcon: ({ size, color }) => <UtensilsCrossed size={size} color={color} />,
         }}
       />
       <Tabs.Screen

@@ -1,31 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
+  View, Text, ScrollView, TouchableOpacity,
+  ActivityIndicator, RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect, Href } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { QrCode, UtensilsCrossed, TrendingUp, Hotel } from 'lucide-react-native';
+import { QrCode, UtensilsCrossed, Sparkles, MapPin, Info, ArrowRight, Hotel } from 'lucide-react-native';
 
 interface Stats {
-  activeItems: number;
-  totalItems: number;
   hotelName: string;
   qrCodeUrl: string;
+  counts: { room_service: number; spa: number; activities: number; info: number };
+  totalActive: number;
+  totalItems: number;
 }
 
+const SECTIONS = [
+  { key: 'room_service', label: 'Room Service', icon: UtensilsCrossed, color: '#f59e0b' },
+  { key: 'spa', label: 'Spa & Bien-être', icon: Sparkles, color: '#a855f7' },
+  { key: 'activities', label: 'Activités', icon: MapPin, color: '#22c55e' },
+  { key: 'info', label: 'Infos Pratiques', icon: Info, color: '#3b82f6' },
+];
+
 export default function HomeScreen() {
-  const [stats, setStats] = useState<Stats>({
-    activeItems: 0,
-    totalItems: 0,
-    hotelName: '',
-    qrCodeUrl: '',
-  });
+  const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const { user } = useAuth();
@@ -33,154 +32,107 @@ export default function HomeScreen() {
 
   const fetchStats = async () => {
     if (!user) return;
-
     try {
-      const { data: hotels } = await supabase
-        .from('hotels')
-        .select('id, name, qr_code_url')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const { data: hotel } = await supabase
+        .from('hotels').select('id, name, qr_code_url').eq('user_id', user.id).maybeSingle();
 
-      if (hotels) {
+      if (hotel) {
         const { data: items } = await supabase
-          .from('menu_items')
-          .select('is_active')
-          .eq('hotel_id', hotels.id);
+          .from('menu_items').select('category, is_active').eq('hotel_id', hotel.id);
 
-        const activeItems = items?.filter((item) => item.is_active).length || 0;
-        const totalItems = items?.length || 0;
+        const counts = { room_service: 0, spa: 0, activities: 0, info: 0 };
+        let totalActive = 0;
+        items?.forEach(i => {
+          counts[i.category as keyof typeof counts] = (counts[i.category as keyof typeof counts] || 0) + 1;
+          if (i.is_active) totalActive++;
+        });
 
         setStats({
-          activeItems,
-          totalItems,
-          hotelName: hotels.name,
-          qrCodeUrl: hotels.qr_code_url || '',
+          hotelName: hotel.name,
+          qrCodeUrl: hotel.qr_code_url || '',
+          counts,
+          totalActive,
+          totalItems: items?.length || 0,
         });
-      } else {
-        const { data: newHotel } = await supabase
-          .from('hotels')
-          .insert([
-            {
-              user_id: user.id,
-              name: 'Mon Hôtel',
-              qr_code_url: `https://menuqr.app/menu/${user.id}`,
-            },
-          ])
-          .select()
-          .single();
-
-        if (newHotel) {
-          setStats({
-            activeItems: 0,
-            totalItems: 0,
-            hotelName: newHotel.name,
-            qrCodeUrl: newHotel.qr_code_url,
-          });
-        }
       }
-    } catch (error) {
-      console.error('Error fetching stats:', error);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    if (!user) {
-      router.replace('/login');
-      return;
-    }
-    fetchStats();
-  }, [user]);
+  useFocusEffect(useCallback(() => { fetchStats(); }, [user]));
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchStats();
-  };
-
-  if (loading) {
-    return (
-      <View className="flex-1 bg-slate-900 items-center justify-center">
-        <ActivityIndicator size="large" color="#3b82f6" />
-      </View>
-    );
-  }
+  if (loading) return (
+    <View className="flex-1 bg-slate-900 items-center justify-center">
+      <ActivityIndicator size="large" color="#3b82f6" />
+    </View>
+  );
 
   return (
     <ScrollView
       className="flex-1 bg-slate-900"
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3b82f6" />
-      }>
-      <View className="px-6 py-8">
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchStats(); }} tintColor="#3b82f6" />}
+    >
+      <View className="px-6 pt-14 pb-8">
         <View className="mb-8">
-          <View className="flex-row items-center mb-2">
-            <Hotel size={32} color="#3b82f6" />
-            <Text className="text-white text-3xl font-bold ml-3">{stats.hotelName}</Text>
+          <View className="flex-row items-center mb-1">
+            <Hotel size={24} color="#3b82f6" />
+            <Text className="text-white text-2xl font-bold ml-2">{stats?.hotelName || 'Mon Hôtel'}</Text>
           </View>
-          <Text className="text-slate-400 text-lg">Dashboard MenuQR</Text>
+          <Text className="text-slate-400">Bienvenue sur votre dashboard</Text>
         </View>
 
-        <View className="space-y-4">
-          <View className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <View className="flex-row items-center mb-4">
-              <View className="bg-green-500/10 p-3 rounded-xl">
-                <UtensilsCrossed size={24} color="#22c55e" />
-              </View>
-              <View className="ml-4 flex-1">
-                <Text className="text-slate-400 text-sm">Items Actifs</Text>
-                <Text className="text-white text-3xl font-bold">{stats.activeItems}</Text>
-              </View>
-            </View>
-            <View className="border-t border-slate-700 pt-3 mt-2">
-              <Text className="text-slate-500 text-sm">
-                Sur un total de {stats.totalItems} items
-              </Text>
-            </View>
+        <View className="flex-row gap-3 mb-6">
+          <View className="flex-1 bg-slate-800 rounded-2xl p-4 border border-slate-700">
+            <Text className="text-slate-400 text-xs mb-1 font-medium">Items actifs</Text>
+            <Text className="text-white text-3xl font-bold">{stats?.totalActive || 0}</Text>
+            <Text className="text-slate-500 text-xs mt-1">sur {stats?.totalItems || 0} total</Text>
           </View>
-
-          <View className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <View className="flex-row items-center mb-4">
-              <View className="bg-blue-500/10 p-3 rounded-xl">
-                <TrendingUp size={24} color="#3b82f6" />
-              </View>
-              <View className="ml-4 flex-1">
-                <Text className="text-slate-400 text-sm">Total Items</Text>
-                <Text className="text-white text-3xl font-bold">{stats.totalItems}</Text>
-              </View>
-            </View>
-            <View className="border-t border-slate-700 pt-3 mt-2">
-              <Text className="text-slate-500 text-sm">Dans votre menu</Text>
-            </View>
+          <View className="flex-1 bg-slate-800 rounded-2xl p-4 border border-slate-700">
+            <Text className="text-slate-400 text-xs mb-1 font-medium">Sections</Text>
+            <Text className="text-white text-3xl font-bold">4</Text>
+            <Text className="text-slate-500 text-xs mt-1">configurées</Text>
           </View>
+        </View>
 
-          <View className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 mt-4">
-            <View className="flex-row items-center mb-4">
-              <View className="bg-white/20 p-3 rounded-xl">
-                <QrCode size={28} color="white" />
-              </View>
-              <View className="ml-4 flex-1">
-                <Text className="text-white text-xl font-bold">Menu Client</Text>
-                <Text className="text-blue-100 text-sm mt-1">Scannez pour accéder</Text>
-              </View>
-            </View>
+        <Text className="text-white font-bold text-lg mb-3">Vos sections</Text>
+        <View className="mb-6">
+          {SECTIONS.map(s => {
+            const Icon = s.icon;
+            const count = stats?.counts[s.key as keyof typeof stats.counts] || 0;
+            return (
+              <TouchableOpacity
+                key={s.key}
+                onPress={() => router.push('/menu' as Href)}
+                className="bg-slate-800 rounded-2xl p-4 mb-3 border border-slate-700 flex-row items-center"
+              >
+                <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: s.color + '20' }}>
+                  <Icon size={20} color={s.color} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-white font-medium">{s.label}</Text>
+                  <Text className="text-slate-400 text-sm">{count} item{count > 1 ? 's' : ''}</Text>
+                </View>
+                <ArrowRight size={18} color="#475569" />
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
-            {stats.qrCodeUrl ? (
-              <View className="bg-white/10 rounded-xl p-4 mt-2">
-                <Text className="text-white text-xs font-mono" numberOfLines={2}>
-                  {stats.qrCodeUrl}
-                </Text>
-              </View>
-            ) : (
-              <Text className="text-blue-100 text-sm">Configuration du QR code en cours...</Text>
-            )}
+        <View className="bg-blue-500/10 border border-blue-500/30 rounded-2xl p-5">
+          <View className="flex-row items-center mb-3">
+            <QrCode size={20} color="#3b82f6" />
+            <Text className="text-blue-400 font-semibold ml-2">Lien menu client</Text>
           </View>
-
-          <TouchableOpacity className="bg-blue-500 py-4 rounded-xl mt-4">
-            <Text className="text-white text-center font-semibold text-lg">
-              Gérer les Items
-            </Text>
+          <Text className="text-slate-300 text-xs font-mono mb-3" numberOfLines={2}>{stats?.qrCodeUrl}</Text>
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs)/settings')}
+            className="bg-blue-500/20 py-2 rounded-xl items-center"
+          >
+            <Text className="text-blue-400 text-sm font-medium">Gérer dans Paramètres →</Text>
           </TouchableOpacity>
         </View>
       </View>
